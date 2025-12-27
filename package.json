@@ -20,20 +20,61 @@
     "configuration": {
       "title": "Traycer Clone",
       "properties": {
+        "traycer.provider": {
+          "type": "string",
+          "default": "openai",
+          "enum": ["openai", "anthropic", "groq", "ollama", "custom"],
+          "enumDescriptions": [
+            "OpenAI (GPT-4, GPT-3.5)",
+            "Anthropic (Claude)",
+            "Groq (Fast inference)",
+            "Ollama (Local models)",
+            "Custom OpenAI-compatible API"
+          ],
+          "description": "LLM provider to use"
+        },
         "traycer.apiKey": {
           "type": "string",
           "default": "",
-          "description": "OpenAI API Key for Traycer Clone"
+          "description": "API Key for the selected provider"
         },
         "traycer.apiBaseUrl": {
           "type": "string",
-          "default": "https://api.openai.com/v1",
-          "description": "API Base URL (e.g. for Groq or local LLMs)"
+          "default": "",
+          "description": "Custom API Base URL (leave empty for default)"
         },
         "traycer.model": {
           "type": "string",
-          "default": "gpt-4o",
-          "description": "Model to use for planning and review"
+          "default": "",
+          "description": "Model name (leave empty for provider default)"
+        },
+        "traycer.mcpServers": {
+          "type": "object",
+          "default": {},
+          "description": "MCP server configurations",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string",
+                "description": "Command to start the MCP server"
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Arguments for the command"
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables"
+              },
+              "disabled": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether the server is disabled"
+              }
+            }
+          }
         }
       }
     },
@@ -52,6 +93,11 @@
           "id": "traycer.chatView",
           "type": "webview",
           "name": "Chat & Plan"
+        },
+        {
+          "id": "traycer.settingsView",
+          "type": "webview",
+          "name": "Settings"
         }
       ]
     },
@@ -59,6 +105,14 @@
       {
         "command": "traycer.startPlan",
         "title": "Traycer: Start New Plan"
+      },
+      {
+        "command": "traycer.openSettings",
+        "title": "Traycer: Open Settings"
+      },
+      {
+        "command": "traycer.configureMcp",
+        "title": "Traycer: Configure MCP Servers"
       }
     ]
   },

@@ -1,7 +1,37 @@
 import * as vscode from 'vscode';
 import OpenAI from 'openai';
 
+// Provider configurations with defaults
+const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string; requiresApiKey: boolean }> = {
+    openai: {
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4o',
+        requiresApiKey: true
+    },
+    anthropic: {
+        baseUrl: 'https://api.anthropic.com/v1',
+        model: 'claude-3-5-sonnet-20241022',
+        requiresApiKey: true
+    },
+    groq: {
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'llama-3.3-70b-versatile',
+        requiresApiKey: true
+    },
+    ollama: {
+        baseUrl: 'http://localhost:11434/v1',
+        model: 'llama3.2',
+        requiresApiKey: false
+    },
+    custom: {
+        baseUrl: '',
+        model: '',
+        requiresApiKey: true
+    }
+};
+
 export interface LLMClientConfig {
+    provider: string;
     apiKey: string;
     baseUrl: string;
     model: string;
@@ -57,11 +87,15 @@ export class LLMClient {
      */
     public loadConfigFromSettings(): void {
         const settings = vscode.workspace.getConfiguration('traycer');
+        const provider = settings.get<string>('provider') || 'openai';
+        const providerDefaults = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.openai;
+        
         const apiKey = settings.get<string>('apiKey') || '';
-        const baseUrl = settings.get<string>('apiBaseUrl') || 'https://api.openai.com/v1';
-        const model = settings.get<string>('model') || 'gpt-4o';
+        const baseUrl = settings.get<string>('apiBaseUrl') || providerDefaults.baseUrl;
+        const model = settings.get<string>('model') || providerDefaults.model;
 
         this.configure({
+            provider,
             apiKey,
             baseUrl,
             model
@@ -74,10 +108,16 @@ export class LLMClient {
     public configure(config: LLMClientConfig): void {
         this.config = config;
         
-        if (config.apiKey) {
+        const providerDefaults = PROVIDER_DEFAULTS[config.provider] || PROVIDER_DEFAULTS.openai;
+        const needsApiKey = providerDefaults.requiresApiKey;
+        
+        // For providers that don't need API key (like Ollama), use a placeholder
+        const apiKey = needsApiKey ? config.apiKey : (config.apiKey || 'ollama');
+        
+        if (apiKey || !needsApiKey) {
             this.client = new OpenAI({
-                apiKey: config.apiKey,
-                baseURL: config.baseUrl,
+                apiKey: apiKey,
+                baseURL: config.baseUrl || providerDefaults.baseUrl,
                 timeout: config.timeout || 60000
             });
         } else {
@@ -103,8 +143,10 @@ export class LLMClient {
             return { valid: false, errors };
         }
 
-        if (!this.config.apiKey || this.config.apiKey.trim() === '') {
-            errors.push('API Key is required. Please set traycer.apiKey in settings.');
+        const providerDefaults = PROVIDER_DEFAULTS[this.config.provider] || PROVIDER_DEFAULTS.openai;
+
+        if (providerDefaults.requiresApiKey && (!this.config.apiKey || this.config.apiKey.trim() === '')) {
+            errors.push('API Key is required. Please configure it in Traycer Settings.');
         }
 
         if (!this.config.baseUrl || this.config.baseUrl.trim() === '') {
