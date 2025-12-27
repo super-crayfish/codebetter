@@ -21,3 +21,11 @@ yarn-error.log*
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Extension Artifacts
+*.vsix
+implementation_plan.md
+run.md
+
+# Local setting
+.vscode/

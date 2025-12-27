@@ -1,0 +1,14 @@
+.vscode/
+.vscode-test/
+out/**/*.map
+node_modules/
+src/
+**/*.ts
+**/*.tsbuildinfo
+.gitignore
+.git/
+LICENSE
+README.md
+tsconfig.json
+package-lock.json
+vsc-extension-quickstart.md
