@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import { PhaseContext, PhaseResult } from '../types';
 import { McpRegistry } from '../mcp/McpRegistry';
 import { LLMClient, ChatMessage, ToolDefinition, ToolCall } from '../llm';
@@ -37,9 +36,16 @@ export class PhaseRunner {
     private mcpRegistry: McpRegistry;
     private llmClient: LLMClient;
 
-    constructor() {
-        this.mcpRegistry = new McpRegistry();
-        this.llmClient = new LLMClient();
+    constructor(llmClient: LLMClient, mcpRegistry?: McpRegistry) {
+        this.llmClient = llmClient;
+        this.mcpRegistry = mcpRegistry || new McpRegistry();
+    }
+
+    /**
+     * Get the MCP registry for external configuration
+     */
+    public getMcpRegistry(): McpRegistry {
+        return this.mcpRegistry;
     }
 
     public async executePhase(type: 'phases' | 'plan' | 'review', context: PhaseContext): Promise<PhaseResult> {

@@ -4,20 +4,27 @@ import { TraycerViewProvider } from './TraycerViewProvider';
 import { SettingsViewProvider } from './SettingsViewProvider';
 import { ConfigurationManager } from './core/llm/ConfigurationManager';
 import { LLMClient } from './core/llm/LLMClient';
+import { McpRegistry } from './core/mcp/McpRegistry';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Traycer Clone is now active!');
 
-    // Initialize LLM Client and Configuration Manager
+    // Initialize shared LLM Client
     const llmClient = new LLMClient();
+    
+    // Initialize MCP Registry and load user-configured servers
+    const mcpRegistry = new McpRegistry();
+    loadUserMcpServers(mcpRegistry);
+    
+    // Initialize Configuration Manager with shared LLM Client
     const configManager = new ConfigurationManager(llmClient);
 
-    // Assemble Core Services
-    const phaseRunner = new PhaseRunner();
+    // Assemble Core Services with shared instances
+    const phaseRunner = new PhaseRunner(llmClient, mcpRegistry);
 
     // Assemble View Providers
     const chatProvider = new TraycerViewProvider(context.extensionUri, phaseRunner);
-    const settingsProvider = new SettingsViewProvider(context.extensionUri);
+    const settingsProvider = new SettingsViewProvider(context.extensionUri, mcpRegistry);
 
     // Register Webview Providers
     context.subscriptions.push(
@@ -46,6 +53,16 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    // Listen for configuration changes to reload MCP servers
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(event => {
+            if (event.affectsConfiguration('traycer.mcpServers')) {
+                console.log('MCP servers configuration changed, reloading...');
+                loadUserMcpServers(mcpRegistry);
+            }
+        })
+    );
+
     // Add configuration manager to subscriptions for cleanup
     context.subscriptions.push({
         dispose: () => configManager.dispose()
@@ -57,7 +74,7 @@ export function activate(context: vscode.ExtensionContext) {
     const apiKey = config.get<string>('apiKey');
     
     // Only show warning for providers that require API key
-    const requiresApiKey = ['openai', 'anthropic', 'groq', 'custom'].includes(provider);
+    const requiresApiKey = ['openai', 'groq', 'custom'].includes(provider);
     if (requiresApiKey && !apiKey) {
         vscode.window.showWarningMessage(
             'Traycer: API Key not configured. Please configure your LLM provider settings.',
@@ -67,6 +84,28 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.commands.executeCommand('workbench.view.extension.traycer-explorer');
             }
         });
+    }
+}
+
+/**
+ * Load user-configured MCP servers from settings
+ */
+function loadUserMcpServers(mcpRegistry: McpRegistry): void {
+    const config = vscode.workspace.getConfiguration('traycer');
+    const mcpServers = config.get<Record<string, any>>('mcpServers') || {};
+    
+    // Clear existing user MCP servers and reload
+    mcpRegistry.clearUserProviders();
+    
+    for (const [name, serverConfig] of Object.entries(mcpServers)) {
+        if (serverConfig.disabled) {
+            continue;
+        }
+        
+        if (serverConfig.command) {
+            mcpRegistry.registerUserMcpServer(name, serverConfig);
+            console.log(`Registered user MCP server: ${name}`);
+        }
     }
 }
 

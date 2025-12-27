@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { McpRegistry } from './core/mcp/McpRegistry';
 
 export interface ProviderConfig {
     name: string;
@@ -8,19 +9,13 @@ export interface ProviderConfig {
     requiresApiKey: boolean;
 }
 
+// Only OpenAI-compatible providers (removed Anthropic as it requires different SDK)
 export const LLM_PROVIDERS: Record<string, ProviderConfig> = {
     openai: {
         name: 'OpenAI',
         defaultBaseUrl: 'https://api.openai.com/v1',
         defaultModel: 'gpt-4o',
         models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-        requiresApiKey: true
-    },
-    anthropic: {
-        name: 'Anthropic',
-        defaultBaseUrl: 'https://api.anthropic.com/v1',
-        defaultModel: 'claude-3-5-sonnet-20241022',
-        models: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
         requiresApiKey: true
     },
     groq: {
@@ -30,15 +25,22 @@ export const LLM_PROVIDERS: Record<string, ProviderConfig> = {
         models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
         requiresApiKey: true
     },
+    deepseek: {
+        name: 'DeepSeek',
+        defaultBaseUrl: 'https://api.deepseek.com/v1',
+        defaultModel: 'deepseek-chat',
+        models: ['deepseek-chat', 'deepseek-coder'],
+        requiresApiKey: true
+    },
     ollama: {
-        name: 'Ollama',
+        name: 'Ollama (Local)',
         defaultBaseUrl: 'http://localhost:11434/v1',
         defaultModel: 'llama3.2',
         models: ['llama3.2', 'codellama', 'mistral', 'qwen2.5-coder'],
         requiresApiKey: false
     },
     custom: {
-        name: 'Custom',
+        name: 'Custom API',
         defaultBaseUrl: '',
         defaultModel: '',
         models: [],
@@ -49,12 +51,18 @@ export const LLM_PROVIDERS: Record<string, ProviderConfig> = {
 export class SettingsViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'traycer.settingsView';
     private _view?: vscode.WebviewView;
+    private _mcpRegistry?: McpRegistry;
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(
+        private readonly _extensionUri: vscode.Uri,
+        mcpRegistry?: McpRegistry
+    ) {
+        this._mcpRegistry = mcpRegistry;
+    }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
+        _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
     ) {
         this._view = webviewView;
@@ -129,6 +137,15 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         const apiKey = config.get<string>('apiKey') || '';
         const providerConfig = LLM_PROVIDERS[provider];
 
+        if (!providerConfig) {
+            this._view?.webview.postMessage({ 
+                type: 'testResult', 
+                success: false, 
+                message: 'Unknown provider' 
+            });
+            return;
+        }
+
         if (providerConfig.requiresApiKey && !apiKey) {
             this._view?.webview.postMessage({ 
                 type: 'testResult', 
@@ -145,7 +162,7 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
             const model = config.get<string>('model') || providerConfig.defaultModel;
 
             const OpenAI = require('openai');
-            const client = new OpenAI({
+            const client = new OpenAI.default({
                 apiKey: apiKey || 'ollama',
                 baseURL: baseUrl,
                 timeout: 10000
@@ -195,11 +212,6 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
             margin: 0 0 16px 0;
             padding-bottom: 8px;
             border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        h3 {
-            font-size: 12px;
-            margin: 16px 0 8px 0;
-            color: var(--vscode-descriptionForeground);
         }
         .form-group {
             margin-bottom: 12px;
@@ -319,8 +331,8 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
             <label>Provider</label>
             <select id="provider">
                 <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic (Claude)</option>
                 <option value="groq">Groq</option>
+                <option value="deepseek">DeepSeek</option>
                 <option value="ollama">Ollama (Local)</option>
                 <option value="custom">Custom API</option>
             </select>
@@ -329,7 +341,7 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         <div class="form-group" id="apiKeyGroup">
             <label>API Key</label>
             <input type="password" id="apiKey" placeholder="Enter your API key">
-            <div class="hint">Your API key is stored securely in VS Code settings</div>
+            <div class="hint">Your API key is stored in VS Code settings</div>
         </div>
 
         <div class="form-group">
@@ -374,7 +386,6 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         let currentConfig = {};
         let providers = {};
 
-        // Request config on load
         vscode.postMessage({ type: 'getConfig' });
 
         window.addEventListener('message', event => {
@@ -401,19 +412,10 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         });
 
         function updateUI() {
-            const providerSelect = document.getElementById('provider');
-            const apiKeyInput = document.getElementById('apiKey');
-            const apiBaseUrlInput = document.getElementById('apiBaseUrl');
-            const modelSelect = document.getElementById('model');
-            const customModelInput = document.getElementById('customModel');
-            const apiKeyGroup = document.getElementById('apiKeyGroup');
-            const baseUrlHint = document.getElementById('baseUrlHint');
-
-            providerSelect.value = currentConfig.provider || 'openai';
-            apiKeyInput.value = currentConfig.apiKey || '';
-            apiBaseUrlInput.value = currentConfig.apiBaseUrl || '';
-            customModelInput.value = currentConfig.model || '';
-
+            document.getElementById('provider').value = currentConfig.provider || 'openai';
+            document.getElementById('apiKey').value = currentConfig.apiKey || '';
+            document.getElementById('apiBaseUrl').value = currentConfig.apiBaseUrl || '';
+            document.getElementById('customModel').value = currentConfig.model || '';
             updateProviderUI();
             renderMcpServers();
         }
@@ -421,45 +423,32 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         function updateProviderUI() {
             const provider = document.getElementById('provider').value;
             const providerConfig = providers[provider];
-            const apiKeyGroup = document.getElementById('apiKeyGroup');
-            const baseUrlHint = document.getElementById('baseUrlHint');
+            if (!providerConfig) return;
+
+            document.getElementById('apiKeyGroup').style.display = providerConfig.requiresApiKey ? 'block' : 'none';
+            document.getElementById('baseUrlHint').textContent = 'Default: ' + (providerConfig.defaultBaseUrl || 'None');
+
             const modelSelect = document.getElementById('model');
-
-            // Show/hide API key based on provider
-            apiKeyGroup.style.display = providerConfig.requiresApiKey ? 'block' : 'none';
-            
-            // Update base URL hint
-            baseUrlHint.textContent = 'Default: ' + (providerConfig.defaultBaseUrl || 'None');
-
-            // Update model options
             modelSelect.innerHTML = '';
-            if (providerConfig.models.length > 0) {
-                providerConfig.models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model;
-                    option.textContent = model;
-                    modelSelect.appendChild(option);
-                });
-                modelSelect.value = currentConfig.model || providerConfig.defaultModel;
-            }
+            providerConfig.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                modelSelect.appendChild(option);
+            });
+            modelSelect.value = currentConfig.model || providerConfig.defaultModel;
         }
 
         document.getElementById('provider').addEventListener('change', updateProviderUI);
 
         function saveConfig() {
-            const provider = document.getElementById('provider').value;
-            const apiKey = document.getElementById('apiKey').value;
-            const apiBaseUrl = document.getElementById('apiBaseUrl').value;
-            const modelSelect = document.getElementById('model').value;
-            const customModel = document.getElementById('customModel').value;
-
             vscode.postMessage({
                 type: 'saveConfig',
                 config: {
-                    provider,
-                    apiKey,
-                    apiBaseUrl,
-                    model: customModel || modelSelect,
+                    provider: document.getElementById('provider').value,
+                    apiKey: document.getElementById('apiKey').value,
+                    apiBaseUrl: document.getElementById('apiBaseUrl').value,
+                    model: document.getElementById('customModel').value || document.getElementById('model').value,
                     mcpServers: collectMcpServers()
                 }
             });
@@ -467,9 +456,7 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
 
         function testConnection() {
             saveConfig();
-            setTimeout(() => {
-                vscode.postMessage({ type: 'testConnection' });
-            }, 500);
+            setTimeout(() => vscode.postMessage({ type: 'testConnection' }), 500);
         }
 
         function showStatus(message, type) {
@@ -477,63 +464,42 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
             status.textContent = message;
             status.className = 'status ' + type;
             status.style.display = 'block';
-            
-            if (type !== 'loading') {
-                setTimeout(() => {
-                    status.style.display = 'none';
-                }, 5000);
-            }
+            if (type !== 'loading') setTimeout(() => status.style.display = 'none', 5000);
         }
 
         function openVSCodeSettings() {
             vscode.postMessage({ type: 'openVSCodeSettings' });
         }
 
-        // MCP Server Management
         function renderMcpServers() {
             const container = document.getElementById('mcpServers');
             const servers = currentConfig.mcpServers || {};
-            
             container.innerHTML = '';
-            
             Object.entries(servers).forEach(([name, config]) => {
-                container.innerHTML += createMcpServerHtml(name, config);
+                container.innerHTML += \`
+                    <div class="mcp-server" data-name="\${name}">
+                        <div class="mcp-server-header">
+                            <span class="mcp-server-name">\${name}</span>
+                            <button class="remove-btn" onclick="removeMcpServer('\${name}')">✕</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Command</label>
+                            <input type="text" class="mcp-command" value="\${config.command || ''}" placeholder="e.g., uvx">
+                        </div>
+                        <div class="form-group">
+                            <label>Arguments (comma separated)</label>
+                            <input type="text" class="mcp-args" value="\${(config.args || []).join(', ')}" placeholder="e.g., mcp-server-name">
+                        </div>
+                    </div>
+                \`;
             });
-        }
-
-        function createMcpServerHtml(name, config) {
-            return \`
-                <div class="mcp-server" data-name="\${name}">
-                    <div class="mcp-server-header">
-                        <span class="mcp-server-name">\${name}</span>
-                        <button class="remove-btn" onclick="removeMcpServer('\${name}')">✕</button>
-                    </div>
-                    <div class="form-group">
-                        <label>Command</label>
-                        <input type="text" class="mcp-command" value="\${config.command || ''}" placeholder="e.g., uvx">
-                    </div>
-                    <div class="form-group">
-                        <label>Arguments (comma separated)</label>
-                        <input type="text" class="mcp-args" value="\${(config.args || []).join(', ')}" placeholder="e.g., mcp-server-name">
-                    </div>
-                </div>
-            \`;
         }
 
         function addMcpServer() {
             const name = prompt('Enter server name:');
             if (!name) return;
-            
-            if (!currentConfig.mcpServers) {
-                currentConfig.mcpServers = {};
-            }
-            
-            currentConfig.mcpServers[name] = {
-                command: '',
-                args: [],
-                disabled: false
-            };
-            
+            if (!currentConfig.mcpServers) currentConfig.mcpServers = {};
+            currentConfig.mcpServers[name] = { command: '', args: [], disabled: false };
             renderMcpServers();
         }
 
@@ -551,7 +517,6 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
                 const command = el.querySelector('.mcp-command').value;
                 const argsStr = el.querySelector('.mcp-args').value;
                 const args = argsStr ? argsStr.split(',').map(s => s.trim()).filter(s => s) : [];
-                
                 servers[name] = { command, args, disabled: false };
             });
             return servers;

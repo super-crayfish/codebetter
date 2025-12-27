@@ -1,21 +1,21 @@
 import * as vscode from 'vscode';
 import OpenAI from 'openai';
 
-// Provider configurations with defaults
+// Provider configurations with defaults (only OpenAI-compatible APIs)
 const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string; requiresApiKey: boolean }> = {
     openai: {
         baseUrl: 'https://api.openai.com/v1',
         model: 'gpt-4o',
         requiresApiKey: true
     },
-    anthropic: {
-        baseUrl: 'https://api.anthropic.com/v1',
-        model: 'claude-3-5-sonnet-20241022',
-        requiresApiKey: true
-    },
     groq: {
         baseUrl: 'https://api.groq.com/openai/v1',
         model: 'llama-3.3-70b-versatile',
+        requiresApiKey: true
+    },
+    deepseek: {
+        baseUrl: 'https://api.deepseek.com/v1',
+        model: 'deepseek-chat',
         requiresApiKey: true
     },
     ollama: {
@@ -29,6 +29,8 @@ const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string; requir
         requiresApiKey: true
     }
 };
+
+export { PROVIDER_DEFAULTS };
 
 export interface LLMClientConfig {
     provider: string;

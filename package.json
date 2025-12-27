@@ -23,11 +23,11 @@
         "traycer.provider": {
           "type": "string",
           "default": "openai",
-          "enum": ["openai", "anthropic", "groq", "ollama", "custom"],
+          "enum": ["openai", "groq", "deepseek", "ollama", "custom"],
           "enumDescriptions": [
             "OpenAI (GPT-4, GPT-3.5)",
-            "Anthropic (Claude)",
             "Groq (Fast inference)",
+            "DeepSeek",
             "Ollama (Local models)",
             "Custom OpenAI-compatible API"
           ],
