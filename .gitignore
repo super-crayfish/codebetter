@@ -29,3 +29,6 @@ run.md
 
 # Local setting
 .vscode/
+
+# Kiro specs and documentation
+.kiro/
