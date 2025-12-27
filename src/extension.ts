@@ -6,6 +6,9 @@ import { ConfigurationManager } from './core/llm/ConfigurationManager';
 import { LLMClient } from './core/llm/LLMClient';
 import { McpRegistry } from './core/mcp/McpRegistry';
 
+// Global reference for cleanup
+let mcpRegistry: McpRegistry | null = null;
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('Traycer Clone is now active!');
 
@@ -13,7 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
     const llmClient = new LLMClient();
     
     // Initialize MCP Registry and load user-configured servers
-    const mcpRegistry = new McpRegistry();
+    mcpRegistry = new McpRegistry();
     loadUserMcpServers(mcpRegistry);
     
     // Initialize Configuration Manager with shared LLM Client
@@ -58,14 +61,27 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidChangeConfiguration(event => {
             if (event.affectsConfiguration('traycer.mcpServers')) {
                 console.log('MCP servers configuration changed, reloading...');
-                loadUserMcpServers(mcpRegistry);
+                if (mcpRegistry) {
+                    loadUserMcpServers(mcpRegistry);
+                }
             }
         })
     );
 
-    // Add configuration manager to subscriptions for cleanup
+    // Add cleanup for configuration manager
     context.subscriptions.push({
         dispose: () => configManager.dispose()
+    });
+
+    // Add cleanup for MCP registry
+    context.subscriptions.push({
+        dispose: () => {
+            if (mcpRegistry) {
+                mcpRegistry.dispose().catch(err => {
+                    console.error('Error disposing MCP registry:', err);
+                });
+            }
+        }
     });
 
     // Check if API key is configured on startup
@@ -74,7 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
     const apiKey = config.get<string>('apiKey');
     
     // Only show warning for providers that require API key
-    const requiresApiKey = ['openai', 'groq', 'custom'].includes(provider);
+    const requiresApiKey = ['openai', 'groq', 'deepseek', 'custom'].includes(provider);
     if (requiresApiKey && !apiKey) {
         vscode.window.showWarningMessage(
             'Traycer: API Key not configured. Please configure your LLM provider settings.',
@@ -90,12 +106,12 @@ export function activate(context: vscode.ExtensionContext) {
 /**
  * Load user-configured MCP servers from settings
  */
-function loadUserMcpServers(mcpRegistry: McpRegistry): void {
+async function loadUserMcpServers(registry: McpRegistry): Promise<void> {
     const config = vscode.workspace.getConfiguration('traycer');
     const mcpServers = config.get<Record<string, any>>('mcpServers') || {};
     
     // Clear existing user MCP servers and reload
-    mcpRegistry.clearUserProviders();
+    await registry.clearUserProviders();
     
     for (const [name, serverConfig] of Object.entries(mcpServers)) {
         if (serverConfig.disabled) {
@@ -103,10 +119,22 @@ function loadUserMcpServers(mcpRegistry: McpRegistry): void {
         }
         
         if (serverConfig.command) {
-            mcpRegistry.registerUserMcpServer(name, serverConfig);
-            console.log(`Registered user MCP server: ${name}`);
+            try {
+                await registry.registerUserMcpServer(name, serverConfig);
+                console.log(`Registered user MCP server: ${name}`);
+            } catch (err) {
+                console.error(`Failed to register MCP server ${name}:`, err);
+            }
         }
     }
 }
 
-export function deactivate() {}
+export function deactivate() {
+    // Cleanup MCP registry when extension deactivates
+    if (mcpRegistry) {
+        mcpRegistry.dispose().catch(err => {
+            console.error('Error disposing MCP registry on deactivate:', err);
+        });
+        mcpRegistry = null;
+    }
+}
